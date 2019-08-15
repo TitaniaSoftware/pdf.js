@@ -25,6 +25,7 @@ const SidebarView = {
   OUTLINE: 2,
   ATTACHMENTS: 3,
   LAYERS: 4,
+  METADATA_INDEX: 5,
 };
 
 /**
@@ -86,10 +87,12 @@ class PDFSidebar {
     this.thumbnailButton = elements.thumbnailButton;
     this.outlineButton = elements.outlineButton;
     this.attachmentsButton = elements.attachmentsButton;
+    this.metadataIdxButton = elements.metadataIdxButton;
 
     this.thumbnailView = elements.thumbnailView;
     this.outlineView = elements.outlineView;
     this.attachmentsView = elements.attachmentsView;
+    this.fragmentMetadataView = elements.fragmentMetadataView;
 
     this.eventBus = eventBus;
     this.l10n = l10n;
@@ -106,6 +109,7 @@ class PDFSidebar {
 
     this.outlineButton.disabled = false;
     this.attachmentsButton.disabled = false;
+    this.metadataIdxButton.disabled = false;
   }
 
   /**
@@ -125,6 +129,10 @@ class PDFSidebar {
 
   get isAttachmentsViewVisible() {
     return (this.isOpen && this.active === SidebarView.ATTACHMENTS);
+  }
+
+  get isFragmentMetadataViewVisible() {
+    return (this.isOpen && this.active === SidebarView.METADATA_INDEX);
   }
 
   /**
@@ -169,30 +177,35 @@ class PDFSidebar {
     let shouldForceRendering = false;
 
     switch (view) {
-      case SidebarView.NONE:
-        if (this.isOpen) {
-          this.close();
-          return true; // Closing will trigger rendering and dispatch the event.
-        }
+    case SidebarView.NONE:
+      if (this.isOpen) {
+        this.close();
+        return true; // Closing will trigger rendering and dispatch the event.
+      }
+      return false;
+    case SidebarView.THUMBS:
+      if (this.isOpen && isViewChanged) {
+        shouldForceRendering = true;
+      }
+      break;
+    case SidebarView.OUTLINE:
+      if (this.outlineButton.disabled) {
         return false;
-      case SidebarView.THUMBS:
-        if (this.isOpen && isViewChanged) {
-          shouldForceRendering = true;
-        }
-        break;
-      case SidebarView.OUTLINE:
-        if (this.outlineButton.disabled) {
-          return false;
-        }
-        break;
-      case SidebarView.ATTACHMENTS:
-        if (this.attachmentsButton.disabled) {
-          return false;
-        }
-        break;
-      default:
-        console.error(`PDFSidebar._switchView: "${view}" is not a valid view.`);
+      }
+      break;
+    case SidebarView.ATTACHMENTS:
+      if (this.attachmentsButton.disabled) {
         return false;
+      }
+      break;
+    case SidebarView.METADATA_INDEX:
+      if (this.metadataIdxButton.disabled) {
+        return false;
+      }
+      break;
+    default:
+      console.error(`PDFSidebar._switchView: "${view}" is not a valid view.`);
+      return false;
     }
     // Update the active view *after* it has been validated above,
     // in order to prevent setting it to an invalid state.
@@ -203,13 +216,21 @@ class PDFSidebar {
       view === SidebarView.THUMBS);
     this.outlineButton.classList.toggle('toggled',
       view === SidebarView.OUTLINE);
-    this.attachmentsButton.classList.toggle('toggled',
+    this.attachmentsButton.classList.toggle(
+      'toggled',
       view === SidebarView.ATTACHMENTS);
+    this.metadataIdxButton.classList.toggle(
+      'toggled',
+      view === SidebarView.METADATA_INDEX);
     // ... and for all views.
     this.thumbnailView.classList.toggle('hidden', view !== SidebarView.THUMBS);
     this.outlineView.classList.toggle('hidden', view !== SidebarView.OUTLINE);
-    this.attachmentsView.classList.toggle('hidden',
+    this.attachmentsView.classList.toggle(
+      'hidden',
       view !== SidebarView.ATTACHMENTS);
+    this.fragmentMetadataView.classList.toggle(
+      'hidden',
+      view !== SidebarView.METADATA_INDEX);
 
     if (forceOpen && !this.isOpen) {
       this.open();
@@ -334,6 +355,9 @@ class PDFSidebar {
       case SidebarView.OUTLINE:
         this.outlineButton.classList.add(UI_NOTIFICATION_CLASS);
         break;
+      case SidebarView.METADATA_INDEX:
+        this.metadataIdxButton.classList.add(UI_NOTIFICATION_CLASS);
+        break;
       case SidebarView.ATTACHMENTS:
         this.attachmentsButton.classList.add(UI_NOTIFICATION_CLASS);
         break;
@@ -352,6 +376,9 @@ class PDFSidebar {
       switch (view) {
         case SidebarView.OUTLINE:
           this.outlineButton.classList.remove(UI_NOTIFICATION_CLASS);
+          break;
+        case SidebarView.METADATA_INDEX:
+          this.metadataIdxButton.classList.remove(UI_NOTIFICATION_CLASS);
           break;
         case SidebarView.ATTACHMENTS:
           this.attachmentsButton.classList.remove(UI_NOTIFICATION_CLASS);
@@ -405,6 +432,12 @@ class PDFSidebar {
     this.outlineButton.addEventListener('dblclick', () => {
       this.eventBus.dispatch('toggleoutlinetree', { source: this, });
     });
+    this.metadataIdxButton.addEventListener('click', () => {
+      this.switchView(SidebarView.METADATA_INDEX);
+    });
+    this.metadataIdxButton.addEventListener('dblclick', () => {
+      this.eventBus.dispatch('toggleoutlinetree', { source: this, });
+    });
 
     this.attachmentsButton.addEventListener('click', () => {
       this.switchView(SidebarView.ATTACHMENTS);
@@ -421,6 +454,20 @@ class PDFSidebar {
       } else if (this.active === SidebarView.OUTLINE) {
         // If the outline view was opened during document load, switch away
         // from it if it turns out that the document has no outline.
+        this.switchView(SidebarView.THUMBS);
+      }
+    });
+
+    this.eventBus.on('fragmentmetadataloaded', (evt) => {
+      let metadataCount = evt.outlineCount;
+
+      this.metadataIdxButton.disabled = !metadataCount;
+
+      if (metadataCount) {
+        this._showUINotification(SidebarView.METADATA_INDEX);
+      } else if (this.active === SidebarView.METADATA_INDEX) {
+        // If the metadata view was opened during document load, switch away
+        // from it if it turns out that the document has no fragment metadata.
         this.switchView(SidebarView.THUMBS);
       }
     });

@@ -111,6 +111,8 @@ let PDFViewerApplication = {
   pdfSidebarResizer: null,
   /** @type {PDFOutlineViewer} */
   pdfOutlineViewer: null,
+  /** @type {PDFOutlineViewer} */
+  pdfFragmentMetadataViewer: null,
   /** @type {PDFAttachmentViewer} */
   pdfAttachmentViewer: null,
   /** @type {PDFCursorTools} */
@@ -383,6 +385,13 @@ let PDFViewerApplication = {
       container: appConfig.sidebar.outlineView,
       eventBus,
       linkService: pdfLinkService,
+    });
+
+    this.pdfFragmentMetadataViewer = new PDFOutlineViewer({
+      container: appConfig.sidebar.fragmentMetadataView,
+      eventBus,
+      linkService: pdfLinkService,
+      outlineType: 'fragmentmetadata',
     });
 
     this.pdfAttachmentViewer = new PDFAttachmentViewer({
@@ -1094,6 +1103,11 @@ let PDFViewerApplication = {
       pdfDocument.getAttachments().then((attachments) => {
         this.pdfAttachmentViewer.render({ attachments, });
       });
+      const fmdOutline = this['pdfFragmentMetadata']
+            || top['pdfFragmentMetadata'];
+      if (fmdOutline) {
+        this.pdfFragmentMetadataViewer.render({ outline: fmdOutline ,});
+      }
     });
 
     pdfDocument.getMetadata().then(

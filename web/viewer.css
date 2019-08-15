@@ -890,6 +890,13 @@ html[dir="rtl"] #viewOutline.toolbarButton::before {
   content: url(images/toolbarButton-viewOutline-rtl.png);
 }
 
+html[dir="ltr"] #viewFragmentMetadata.toolbarButton::before {
+  content: url(images/toolbarButton-viewFragmentMetadata.png);
+}
+html[dir="rtl"] #viewFragmentMetadata.toolbarButton::before {
+  content: url(images/toolbarButton-viewFragmentMetadata-rtl.png);
+}
+
 #viewAttachments.toolbarButton::before {
   content: url(images/toolbarButton-viewAttachments.png);
 }

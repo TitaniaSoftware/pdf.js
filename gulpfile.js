@@ -786,9 +786,10 @@ gulp.task('minified-pre', gulp.series('buildnumber', 'default_preferences',
     preprocessCSS('web/viewer.css', 'minified', defines, true)
         .pipe(postcss([autoprefixer(AUTOPREFIXER_CONFIG)]))
         .pipe(gulp.dest(MINIFIED_DIR + 'web')),
-
+/*
     gulp.src('web/compressed.tracemonkey-pldi-09.pdf')
         .pipe(gulp.dest(MINIFIED_DIR + 'web')),
+*/
   ]);
 }));
 

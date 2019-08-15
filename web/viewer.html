@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <!--
 Copyright 2012 Mozilla Foundation
 
@@ -30,7 +30,7 @@ See https://github.com/adobe-type-tools/cmap-resources
 <!--#if GENERIC-->
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <!--#endif-->
-    <title>PDF.js viewer</title>
+    <title>Titania PDF.js viewer</title>
 
 <!--#if FIREFOX || MOZCENTRAL-->
 <!--#include viewer-snippet-firefox-extension.html-->
@@ -73,7 +73,10 @@ See https://github.com/adobe-type-tools/cmap-resources
             <button id="viewOutline" class="toolbarButton" title="Show Document Outline (double-click to expand/collapse all items)" tabindex="3" data-l10n-id="document_outline">
                <span data-l10n-id="document_outline_label">Document Outline</span>
             </button>
-            <button id="viewAttachments" class="toolbarButton" title="Show Attachments" tabindex="4" data-l10n-id="attachments">
+            <button id="viewFragmentMetadata" class="toolbarButton" title="Show Fragment Metadata (double-click to expand/collapse all items)" tabindex="4" data-l10n-id="document_fragment_metadata">
+               <span data-l10n-id="document_fragment_metadata_label">Document Fragment Metadata</span>
+            </button>
+            <button id="viewAttachments" class="toolbarButton" title="Show Attachments" tabindex="5" data-l10n-id="attachments">
                <span data-l10n-id="attachments_label">Attachments</span>
             </button>
           </div>
@@ -82,6 +85,8 @@ See https://github.com/adobe-type-tools/cmap-resources
           <div id="thumbnailView">
           </div>
           <div id="outlineView" class="hidden">
+          </div>
+          <div id="fragmentMetadata" class="hidden">
           </div>
           <div id="attachmentsView" class="hidden">
           </div>
@@ -127,7 +132,7 @@ See https://github.com/adobe-type-tools/cmap-resources
               <span data-l10n-id="presentation_mode_label">Presentation Mode</span>
             </button>
 
-            <button id="secondaryOpenFile" class="secondaryToolbarButton openFile visibleLargeView" title="Open File" tabindex="52" data-l10n-id="open_file">
+            <button id="secondaryOpenFile" class="secondaryToolbarButton openFile visibleLargeView hidden" title="Open File" tabindex="52" data-l10n-id="open_file">
               <span data-l10n-id="open_file_label">Open</span>
             </button>
 

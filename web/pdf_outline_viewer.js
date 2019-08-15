@@ -33,10 +33,11 @@ class PDFOutlineViewer {
   /**
    * @param {PDFOutlineViewerOptions} options
    */
-  constructor({ container, linkService, eventBus, }) {
+  constructor({ container, linkService, eventBus, outlineType, }) {
     this.container = container;
     this.linkService = linkService;
     this.eventBus = eventBus;
+    this.outlineType = outlineType || 'outline';
 
     this.reset();
 
@@ -59,7 +60,7 @@ class PDFOutlineViewer {
    * @private
    */
   _dispatchEvent(outlineCount) {
-    this.eventBus.dispatch('outlineloaded', {
+    this.eventBus.dispatch(`${this.outlineType}loaded`, {
       source: this,
       outlineCount,
     });
@@ -68,7 +69,8 @@ class PDFOutlineViewer {
   /**
    * @private
    */
-  _bindLink(element, { url, newWindow, dest, }) {
+  _bindLink(element, { url, newWindow, dest = "", }) {
+    let pgNbr = "";
     let { linkService, } = this;
 
     if (url) {
@@ -80,9 +82,16 @@ class PDFOutlineViewer {
       return;
     }
 
-    element.href = linkService.getDestinationHash(dest);
+    if (dest.startsWith("page=")) {
+      pgNbr = dest.match(/page=(.*)/)[1];
+      element.href = linkService.getAnchorUrl(`#${dest}`);
+    } else {
+      element.href = linkService.getDestinationHash(dest);
+    }
     element.onclick = () => {
-      if (dest) {
+      if (pgNbr) {
+        linkService.page = pgNbr;
+      } else if (dest) {
         linkService.navigateTo(dest);
       }
       return false;
