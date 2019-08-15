@@ -1104,10 +1104,9 @@ let PDFViewerApplication = {
         this.pdfAttachmentViewer.render({ attachments, });
       });
       const fmdOutline = this['pdfFragmentMetadata']
-            || top['pdfFragmentMetadata'];
-      if (fmdOutline) {
-        this.pdfFragmentMetadataViewer.render({ outline: fmdOutline ,});
-      }
+            || top['pdfFragmentMetadata'] || [];
+      /* call always to disable button in absence of fragment metadata */
+      this.pdfFragmentMetadataViewer.render({ outline: fmdOutline ,});
     });
 
     pdfDocument.getMetadata().then(

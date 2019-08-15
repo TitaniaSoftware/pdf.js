@@ -25,7 +25,7 @@ To build a web distribution of Titania PDF.js for use in a portal theme, run:
 
     $ gulp dist-install
 
-This will generate `build`, `image_decoders`, and `web` directories in the `build/minified/` directory. Copy these 3 directories into a suitable location under the portal theme's `static/` directory. (Perhaps `static/scripts/lib/pdfjs`.)
+This will generate `build`, `image_decoders`, and `web` directories in the `build/minified/` directory. Copy these 3 directories into a suitable location under the portal theme's `static/` directory. (Perhaps `static/scripts/lib/pdfjs/`.)
 
 ## Using Titania PDF.js in a portal theme
 
@@ -51,3 +51,4 @@ To activate the fragment metadata sidebar view, define a javascript variable nam
       ...
     ]
 
+The metadata index should be a 3-level outline, with all metadata names at the top level. Under each name, the range of values comprise the 2nd level. Under each value, the destination links appear, with each item linked to the page or named destination where that value applies.

@@ -1206,6 +1206,10 @@ html[dir='ltr'] .outlineItem > .outlineItems {
   margin-left: 20px;
 }
 
+#fragmentMetadata > .outlineItem > .outlineItems > .outlineItem > a::before {
+    content: "=";
+}
+
 html[dir='rtl'] .outlineWithDeepNesting > .outlineItem,
 html[dir='rtl'] .outlineItem > .outlineItems {
   margin-right: 20px;
@@ -1697,6 +1701,13 @@ html[dir='rtl'] #documentPropertiesOverlay .row > * {
   }
   html[dir="rtl"] #viewOutline.toolbarButton::before {
     content: url(images/toolbarButton-viewOutline-rtl@2x.png);
+  }
+
+  html[dir="ltr"] #viewFragmentMetadata.toolbarButton::before {
+    content: url(images/toolbarButton-viewFragmentMetadata@2x.png);
+  }
+  html[dir="rtl"] #viewFragmentMetadata.toolbarButton::before {
+    content: url(images/toolbarButton-viewFragmentMetadata-rtl@2x.png);
   }
 
   #viewAttachments.toolbarButton::before {
