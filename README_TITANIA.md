@@ -35,7 +35,7 @@ To invoke the viewer for a PDF file, use the portal themeFileUrl of the `web/vie
 
     <iframe src="/scratch/_theme/scripts/lib/pdfjs/web/viewer.html?file=/scratch/my-new-project/ESGN-C-S-PL_0000069612.pdf">
 
-To activate the fragment metadata sidebar view, define a javascript variable named `pdfFragmentMetadata`. This variable can be either in the top window scope, or an iframe scope. If it is defined, the PDF viewer will show an extra sidebar fiew button. The `pdfFragmentMetadata` variable must be an array of outline items, as defined in the PDF.js source file, `src/display/api.js`, for the `getOutline()` function.
+To activate the fragment metadata sidebar view, define a javascript variable named `pdfFragmentMetadata`. This variable can be either in the top window scope, or an iframe scope. If it is defined, the PDF viewer will show an extra sidebar view button. The `pdfFragmentMetadata` variable must be an array of outline items, as defined in the PDF.js source file, `src/display/api.js`, for the `getOutline()` function.
 
     [
       {
