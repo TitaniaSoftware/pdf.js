@@ -332,7 +332,7 @@ function ensureOverlay() {
     document.getElementById('printCancel').onclick = abort;
   }
   return overlayPromise;
-}
+};
 
 PDFPrintServiceFactory.instance = {
   supportsPrinting: true,
