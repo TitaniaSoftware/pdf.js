@@ -74,7 +74,8 @@ var config = JSON.parse(fs.readFileSync(CONFIG_FILE).toString());
 
 // Default Autoprefixer config used for generic, components, minified-pre
 var AUTOPREFIXER_CONFIG = {
-  browsers: [
+//  browsers: [
+  overrideBrowserslist: [
     'last 2 versions',
     'Chrome >= 49', // Last supported on Windows XP
     'Firefox >= 52', // Last supported on Windows XP
@@ -992,7 +993,8 @@ gulp.task('lib', gulp.series('buildnumber', 'default_preferences', function() {
   }
   function preprocess(content) {
     var skipBabel = process.env['SKIP_BABEL'] === 'true' ||
-                    /\/\*\s*no-babel-preset\s*\*\//.test(content);
+        /\/\*\s*no-babel-preset\s*\*\//.test(content);
+
     content = preprocessor2.preprocessPDFJSCode(ctx, content);
     content = babel.transform(content, {
       sourceType: 'module',
