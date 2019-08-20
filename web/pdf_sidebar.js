@@ -462,6 +462,7 @@ class PDFSidebar {
       let metadataCount = evt.outlineCount;
 
       this.metadataIdxButton.disabled = !metadataCount;
+      this.metadataIdxButton.classList.toggle('hidden',!metadataCount);
 
       if (metadataCount) {
         this._showUINotification(SidebarView.METADATA_INDEX);
