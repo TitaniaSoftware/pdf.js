@@ -78,6 +78,7 @@ class PDFOutlineViewer {
         url,
         target: (newWindow ? LinkTarget.BLANK : linkService.externalLinkTarget),
         rel: linkService.externalLinkRel,
+        enabled: linkService.externalLinkEnabled,
       });
       return;
     }

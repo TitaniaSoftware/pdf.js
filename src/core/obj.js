@@ -27,7 +27,6 @@ import { Lexer, Parser } from './parser';
 import {
   MissingDataException, toRomanNumerals, XRefEntryException, XRefParseException
 } from './core_utils';
-import { ChunkedStream } from './chunked_stream';
 import { CipherTransformFactory } from './crypto';
 import { ColorSpace } from './colorspace';
 
@@ -863,8 +862,8 @@ class Catalog {
    * @property {Dict} destDict - The dictionary containing the destination.
    * @property {Object} resultObj - The object where the parsed destination
    *   properties will be placed.
-   * @property {string} docBaseUrl - (optional) The document base URL that is
-   *   used when attempting to recover valid absolute URLs from relative ones.
+   * @property {string} [docBaseUrl] - The document base URL that is used when
+   *   attempting to recover valid absolute URLs from relative ones.
    */
 
   /**
@@ -1043,8 +1042,7 @@ var XRef = (function XRefClosure() {
     this.pdfManager = pdfManager;
     this.entries = [];
     this.xrefstms = Object.create(null);
-    // prepare the XRef cache
-    this.cache = [];
+    this._cacheMap = new Map(); // Prepare the XRef cache.
     this.stats = {
       streamTypes: Object.create(null),
       fontTypes: Object.create(null),
@@ -1416,7 +1414,7 @@ var XRef = (function XRefClosure() {
           position += skipUntil(buffer, position, startxrefBytes);
         } else if ((m = objRegExp.exec(token))) {
           const num = m[1] | 0, gen = m[2] | 0;
-          if (typeof this.entries[num] === 'undefined') {
+          if (!this.entries[num] || this.entries[num].gen === gen) {
             this.entries[num] = {
               offset: position - stream.start,
               gen,
@@ -1626,19 +1624,20 @@ var XRef = (function XRefClosure() {
     },
 
     fetchIfRef: function XRef_fetchIfRef(obj, suppressEncryption) {
-      if (!isRef(obj)) {
-        return obj;
+      if (obj instanceof Ref) {
+        return this.fetch(obj, suppressEncryption);
       }
-      return this.fetch(obj, suppressEncryption);
+      return obj;
     },
 
     fetch: function XRef_fetch(ref, suppressEncryption) {
-      if (!isRef(ref)) {
+      if (!(ref instanceof Ref)) {
         throw new Error('ref object is not a reference');
       }
-      var num = ref.num;
-      if (num in this.cache) {
-        var cacheEntry = this.cache[num];
+      const num = ref.num;
+
+      if (this._cacheMap.has(num)) {
+        const cacheEntry = this._cacheMap.get(num);
         // In documents with Object Streams, it's possible that cached `Dict`s
         // have not been assigned an `objId` yet (see e.g. issue3115r.pdf).
         if (cacheEntry instanceof Dict && !cacheEntry.objId) {
@@ -1646,12 +1645,11 @@ var XRef = (function XRefClosure() {
         }
         return cacheEntry;
       }
+      let xrefEntry = this.getEntry(num);
 
-      var xrefEntry = this.getEntry(num);
-
-      // the referenced entry can be free
-      if (xrefEntry === null) {
-        return (this.cache[num] = null);
+      if (xrefEntry === null) { // The referenced entry can be free.
+        this._cacheMap.set(num, xrefEntry);
+        return xrefEntry;
       }
 
       if (xrefEntry.uncompressed) {
@@ -1709,7 +1707,7 @@ var XRef = (function XRefClosure() {
         xrefEntry = parser.getObj();
       }
       if (!isStream(xrefEntry)) {
-        this.cache[num] = xrefEntry;
+        this._cacheMap.set(num, xrefEntry);
       }
       return xrefEntry;
     },
@@ -1757,7 +1755,7 @@ var XRef = (function XRefClosure() {
         num = nums[i];
         var entry = this.entries[num];
         if (entry && entry.offset === tableOffset && entry.gen === i) {
-          this.cache[num] = entries[i];
+          this._cacheMap.set(num, entries[i]);
         }
       }
       xrefEntry = entries[xrefEntry.gen];
@@ -1768,10 +1766,10 @@ var XRef = (function XRefClosure() {
     },
 
     async fetchIfRefAsync(obj, suppressEncryption) {
-      if (!isRef(obj)) {
-        return obj;
+      if (obj instanceof Ref) {
+        return this.fetchAsync(obj, suppressEncryption);
       }
-      return this.fetchAsync(obj, suppressEncryption);
+      return obj;
     },
 
     async fetchAsync(ref, suppressEncryption) {
@@ -2040,13 +2038,13 @@ var FileSpec = (function FileSpecClosure() {
  */
 let ObjectLoader = (function() {
   function mayHaveChildren(value) {
-    return isRef(value) || isDict(value) || Array.isArray(value) ||
-           isStream(value);
+    return (value instanceof Ref) || (value instanceof Dict) ||
+           Array.isArray(value) || isStream(value);
   }
 
   function addChildren(node, nodesToVisit) {
-    if (isDict(node) || isStream(node)) {
-      let dict = isDict(node) ? node : node.dict;
+    if ((node instanceof Dict) || isStream(node)) {
+      let dict = (node instanceof Dict) ? node : node.dict;
       let dictKeys = dict.getKeys();
       for (let i = 0, ii = dictKeys.length; i < ii; i++) {
         let rawValue = dict.getRaw(dictKeys[i]);
@@ -2069,17 +2067,15 @@ let ObjectLoader = (function() {
     this.keys = keys;
     this.xref = xref;
     this.refSet = null;
-    this.capability = null;
   }
 
   ObjectLoader.prototype = {
-    load() {
-      this.capability = createPromiseCapability();
-      // Don't walk the graph if all the data is already loaded.
-      if (!(this.xref.stream instanceof ChunkedStream) ||
-          this.xref.stream.getMissingChunks().length === 0) {
-        this.capability.resolve();
-        return this.capability.promise;
+    async load() {
+      // Don't walk the graph if all the data is already loaded; note that only
+      // `ChunkedStream` instances have a `allChunksLoaded` method.
+      if (!this.xref.stream.allChunksLoaded ||
+          this.xref.stream.allChunksLoaded()) {
+        return undefined;
       }
 
       let { keys, dict, } = this;
@@ -2093,12 +2089,10 @@ let ObjectLoader = (function() {
           nodesToVisit.push(rawValue);
         }
       }
-
-      this._walk(nodesToVisit);
-      return this.capability.promise;
+      return this._walk(nodesToVisit);
     },
 
-    _walk(nodesToVisit) {
+    async _walk(nodesToVisit) {
       let nodesToRevisit = [];
       let pendingRequests = [];
       // DFS walk of the object graph.
@@ -2106,7 +2100,7 @@ let ObjectLoader = (function() {
         let currentNode = nodesToVisit.pop();
 
         // Only references or chunked streams can cause missing data exceptions.
-        if (isRef(currentNode)) {
+        if (currentNode instanceof Ref) {
           // Skip nodes that have already been visited.
           if (this.refSet.has(currentNode)) {
             continue;
@@ -2127,7 +2121,7 @@ let ObjectLoader = (function() {
           let foundMissingData = false;
           for (let i = 0, ii = baseStreams.length; i < ii; i++) {
             let stream = baseStreams[i];
-            if (stream.getMissingChunks && stream.getMissingChunks().length) {
+            if (stream.allChunksLoaded && !stream.allChunksLoaded()) {
               foundMissingData = true;
               pendingRequests.push({ begin: stream.start, end: stream.end, });
             }
@@ -2141,22 +2135,21 @@ let ObjectLoader = (function() {
       }
 
       if (pendingRequests.length) {
-        this.xref.stream.manager.requestRanges(pendingRequests).then(() => {
-          for (let i = 0, ii = nodesToRevisit.length; i < ii; i++) {
-            let node = nodesToRevisit[i];
-            // Remove any reference nodes from the current `RefSet` so they
-            // aren't skipped when we revist them.
-            if (isRef(node)) {
-              this.refSet.remove(node);
-            }
+        await this.xref.stream.manager.requestRanges(pendingRequests);
+
+        for (let i = 0, ii = nodesToRevisit.length; i < ii; i++) {
+          let node = nodesToRevisit[i];
+          // Remove any reference nodes from the current `RefSet` so they
+          // aren't skipped when we revist them.
+          if (node instanceof Ref) {
+            this.refSet.remove(node);
           }
-          this._walk(nodesToRevisit);
-        }, this.capability.reject);
-        return;
+        }
+        return this._walk(nodesToRevisit);
       }
       // Everything is loaded.
       this.refSet = null;
-      this.capability.resolve();
+      return undefined;
     },
   };
 

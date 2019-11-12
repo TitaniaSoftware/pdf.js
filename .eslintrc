@@ -35,6 +35,7 @@
 
     // Possible errors
     "for-direction": "error",
+    "no-async-promise-executor": "error",
     "no-cond-assign": ["error", "except-parens"],
     "no-constant-condition": ["error", { "checkLoops": false, }],
     "no-dupe-args": "error",
@@ -59,7 +60,10 @@
     "valid-typeof": ["error", { "requireStringLiterals": true, }],
 
     // Best Practices
-    "accessor-pairs": ["error", { "setWithoutGet": true, }],
+    "accessor-pairs": ["error", {
+      "setWithoutGet": true,
+      "enforceForClassMembers": true,
+    }],
     "consistent-return": "error",
     "curly": ["error", "all"],
     "eqeqeq": ["error", "always"],
@@ -86,6 +90,7 @@
     "no-octal-escape": "error",
     "no-octal": "error",
     "no-redeclare": "error",
+    "no-return-await": "error",
     "no-self-assign": "error",
     "no-self-compare": "error",
     "no-throw-literal": "error",
@@ -94,6 +99,7 @@
     "no-useless-call": "error",
     "no-useless-catch": "error",
     "no-useless-concat": "error",
+    "no-useless-return": "error",
     "prefer-promise-reject-errors": "error",
     "wrap-iife": ["error", "any"],
     "yoda": ["error", "never", {
@@ -110,14 +116,6 @@
     "no-restricted-globals": ["error",
       {
         "name": "ReadableStream",
-        "message": "Import it from `src/shared/util.js` or `pdfjsLib` instead; outside of the `/src` and `/web` folders, the rule may be disabled as needed. ",
-      },
-      {
-        "name": "URL",
-        "message": "Import it from `src/shared/util.js` or `pdfjsLib` instead; outside of the `/src` and `/web` folders, the rule may be disabled as needed. ",
-      },
-      {
-        "name": "WritableStream",
         "message": "Import it from `src/shared/util.js` or `pdfjsLib` instead; outside of the `/src` and `/web` folders, the rule may be disabled as needed. ",
       },
     ],
@@ -200,6 +198,7 @@
     "object-shorthand": ["error", "always", {
       "avoidQuotes": true,
     }],
+    "prefer-const": "off",
     "rest-spread-spacing": ["error", "never"],
     "sort-imports": ["error", {
       "ignoreCase": true,

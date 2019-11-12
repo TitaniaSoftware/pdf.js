@@ -15,8 +15,8 @@
 /* eslint no-var: error */
 
 import {
-  assert, CMapCompressionType, isString, removeNullCharacters, stringToBytes,
-  unreachable, URL, Util, warn
+  assert, BaseException, CMapCompressionType, isString, removeNullCharacters,
+  stringToBytes, Util, warn
 } from '../shared/util';
 
 const DEFAULT_LINK_REL = 'noopener noreferrer nofollow';
@@ -160,22 +160,26 @@ class DOMSVGFactory {
  * @property {Array} viewBox - The xMin, yMin, xMax and yMax coordinates.
  * @property {number} scale - The scale of the viewport.
  * @property {number} rotation - The rotation, in degrees, of the viewport.
- * @property {number} offsetX - (optional) The horizontal, i.e. x-axis, offset.
- *   The default value is `0`.
- * @property {number} offsetY - (optional) The vertical, i.e. y-axis, offset.
- *   The default value is `0`.
- * @property {boolean} dontFlip - (optional) If true, the y-axis will not be
- *   flipped. The default value is `false`.
+ * @property {number} [offsetX] - The horizontal, i.e. x-axis, offset. The
+ *   default value is `0`.
+ * @property {number} [offsetY] - The vertical, i.e. y-axis, offset. The
+ *   default value is `0`.
+ * @property {boolean} [dontFlip] - If true, the y-axis will not be flipped.
+ *   The default value is `false`.
  */
 
 /**
  * @typedef {Object} PageViewportCloneParameters
- * @property {number} scale - (optional) The scale, overriding the one in the
- *   cloned viewport. The default value is `this.scale`.
- * @property {number} rotation - (optional) The rotation, in degrees, overriding
- *   the one in the cloned viewport. The default value is `this.rotation`.
- * @property {boolean} dontFlip - (optional) If true, the x-axis will not be
- *   flipped. The default value is `false`.
+ * @property {number} [scale] - The scale, overriding the one in the cloned
+ *   viewport. The default value is `this.scale`.
+ * @property {number} [rotation] - The rotation, in degrees, overriding the one
+ *   in the cloned viewport. The default value is `this.rotation`.
+ * @property {number} [offsetX] - The horizontal, i.e. x-axis, offset.
+ *   The default value is `this.offsetX`.
+ * @property {number} [offsetY] - The vertical, i.e. y-axis, offset.
+ *   The default value is `this.offsetY`.
+ * @property {boolean} [dontFlip] - If true, the x-axis will not be flipped.
+ *   The default value is `false`.
  */
 
 /**
@@ -251,17 +255,17 @@ class PageViewport {
 
   /**
    * Clones viewport, with optional additional properties.
-   * @param {PageViewportCloneParameters} - (optional)
-   * @return {PageViewport} Cloned viewport.
+   * @param {PageViewportCloneParameters} [params]
+   * @returns {PageViewport} Cloned viewport.
    */
-  clone({ scale = this.scale, rotation = this.rotation,
-          dontFlip = false, } = {}) {
+  clone({ scale = this.scale, rotation = this.rotation, offsetX = this.offsetX,
+          offsetY = this.offsetY, dontFlip = false, } = {}) {
     return new PageViewport({
       viewBox: this.viewBox.slice(),
       scale,
       rotation,
-      offsetX: this.offsetX,
-      offsetY: this.offsetY,
+      offsetX,
+      offsetY,
       dontFlip,
     });
   }
@@ -271,7 +275,7 @@ class PageViewport {
    * converting PDF location into canvas pixel coordinates.
    * @param {number} x - The x-coordinate.
    * @param {number} y - The y-coordinate.
-   * @return {Object} Object containing `x` and `y` properties of the
+   * @returns {Object} Object containing `x` and `y` properties of the
    *   point in the viewport coordinate space.
    * @see {@link convertToPdfPoint}
    * @see {@link convertToViewportRectangle}
@@ -283,8 +287,8 @@ class PageViewport {
   /**
    * Converts PDF rectangle to the viewport coordinates.
    * @param {Array} rect - The xMin, yMin, xMax and yMax coordinates.
-   * @return {Array} Array containing corresponding coordinates of the rectangle
-   *   in the viewport coordinate space.
+   * @returns {Array} Array containing corresponding coordinates of the
+   *   rectangle in the viewport coordinate space.
    * @see {@link convertToViewportPoint}
    */
   convertToViewportRectangle(rect) {
@@ -298,7 +302,7 @@ class PageViewport {
    * for converting canvas pixel location into PDF one.
    * @param {number} x - The x-coordinate.
    * @param {number} y - The y-coordinate.
-   * @return {Object} Object containing `x` and `y` properties of the
+   * @returns {Object} Object containing `x` and `y` properties of the
    *   point in the PDF coordinate space.
    * @see {@link convertToViewportPoint}
    */
@@ -307,18 +311,12 @@ class PageViewport {
   }
 }
 
-const RenderingCancelledException = (function RenderingCancelledException() {
-  function RenderingCancelledException(msg, type) {
-    this.message = msg;
+class RenderingCancelledException extends BaseException {
+  constructor(msg, type) {
+    super(msg);
     this.type = type;
   }
-
-  RenderingCancelledException.prototype = new Error();
-  RenderingCancelledException.prototype.name = 'RenderingCancelledException';
-  RenderingCancelledException.constructor = RenderingCancelledException;
-
-  return RenderingCancelledException;
-})();
+}
 
 const LinkTarget = {
   NONE: 0, // Default value.
@@ -328,22 +326,16 @@ const LinkTarget = {
   TOP: 4,
 };
 
-const LinkTargetStringMap = [
-  '',
-  '_self',
-  '_blank',
-  '_parent',
-  '_top',
-];
-
 /**
  * @typedef ExternalLinkParameters
  * @typedef {Object} ExternalLinkParameters
  * @property {string} url - An absolute URL.
- * @property {LinkTarget} target - (optional) The link target.
- *   The default value is `LinkTarget.NONE`.
- * @property {string} rel - (optional) The link relationship.
- *   The default value is `DEFAULT_LINK_REL`.
+ * @property {LinkTarget} [target] - The link target. The default value is
+ *   `LinkTarget.NONE`.
+ * @property {string} [rel] - The link relationship. The default value is
+ *   `DEFAULT_LINK_REL`.
+ * @property {boolean} [enabled] - Whether the link should be enabled. The
+ *   default value is true.
  */
 
 /**
@@ -351,17 +343,41 @@ const LinkTargetStringMap = [
  * @param {HTMLLinkElement} link - The link element.
  * @param {ExternalLinkParameters} params
  */
-function addLinkAttributes(link, { url, target, rel, } = {}) {
-  link.href = link.title = (url ? removeNullCharacters(url) : '');
+function addLinkAttributes(link, { url, target, rel, enabled = true, } = {}) {
+  assert(url && typeof url === 'string',
+         'addLinkAttributes: A valid "url" parameter must provided.');
 
-  if (url) {
-    const LinkTargetValues = Object.values(LinkTarget);
-    const targetIndex =
-      LinkTargetValues.includes(target) ? target : LinkTarget.NONE;
-    link.target = LinkTargetStringMap[targetIndex];
-
-    link.rel = (typeof rel === 'string' ? rel : DEFAULT_LINK_REL);
+  const urlNullRemoved = removeNullCharacters(url);
+  if (enabled) {
+    link.href = link.title = urlNullRemoved;
+  } else {
+    link.href = '';
+    link.title = `Disabled: ${urlNullRemoved}`;
+    link.onclick = () => {
+      return false;
+    };
   }
+
+  let targetStr = ''; // LinkTarget.NONE
+  switch (target) {
+    case LinkTarget.NONE:
+      break;
+    case LinkTarget.SELF:
+      targetStr = '_self';
+      break;
+    case LinkTarget.BLANK:
+      targetStr = '_blank';
+      break;
+    case LinkTarget.PARENT:
+      targetStr = '_parent';
+      break;
+    case LinkTarget.TOP:
+      targetStr = '_top';
+      break;
+  }
+  link.target = targetStr;
+
+  link.rel = (typeof rel === 'string' ? rel : DEFAULT_LINK_REL);
 }
 
 // Gets the file name from a given URL.
@@ -374,28 +390,21 @@ function getFilenameFromUrl(url) {
 }
 
 class StatTimer {
-  constructor(enable = true) {
-    this.enabled = !!enable;
+  constructor() {
     this.started = Object.create(null);
     this.times = [];
   }
 
   time(name) {
-    if (!this.enabled) {
-      return;
-    }
     if (name in this.started) {
-      warn('Timer is already running for ' + name);
+      warn(`Timer is already running for ${name}`);
     }
     this.started[name] = Date.now();
   }
 
   timeEnd(name) {
-    if (!this.enabled) {
-      return;
-    }
     if (!(name in this.started)) {
-      warn('Timer has not been started for ' + name);
+      warn(`Timer has not been started for ${name}`);
     }
     this.times.push({
       'name': name,
@@ -408,7 +417,7 @@ class StatTimer {
 
   toString() {
     // Find the longest name for padding purposes.
-    let out = '', longest = 0;
+    let outBuf = [], longest = 0;
     for (const time of this.times) {
       const name = time.name;
       if (name.length > longest) {
@@ -417,31 +426,9 @@ class StatTimer {
     }
     for (const time of this.times) {
       const duration = time.end - time.start;
-      out += `${time.name.padEnd(longest)} ${duration}ms\n`;
+      outBuf.push(`${time.name.padEnd(longest)} ${duration}ms\n`);
     }
-    return out;
-  }
-}
-
-/**
- * Helps avoid having to initialize {StatTimer} instances, e.g. one for every
- * page, in cases where the collected stats are not actually being used.
- * This (dummy) class can thus, since all its methods are `static`, be directly
- * shared between multiple call-sites without the need to be initialized first.
- *
- * NOTE: This must implement the same interface as {StatTimer}.
- */
-class DummyStatTimer {
-  constructor() {
-    unreachable('Cannot initialize DummyStatTimer.');
-  }
-
-  static time(name) {}
-
-  static timeEnd(name) {}
-
-  static toString() {
-    return '';
+    return outBuf.join('');
   }
 }
 
@@ -508,7 +495,7 @@ class PDFDateString {
   * parts of the date string).
   *
   * @param {string} input
-  * @return {Date|null}
+  * @returns {Date|null}
   */
   static toDateObject(input) {
     if (!input || !isString(input)) {
@@ -587,7 +574,6 @@ export {
   DOMCMapReaderFactory,
   DOMSVGFactory,
   StatTimer,
-  DummyStatTimer,
   isFetchSupported,
   isValidFetchUrl,
   loadScript,
