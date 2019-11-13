@@ -21,7 +21,7 @@ import {
 } from '../shared/util';
 import { CMapFactory, IdentityCMap } from './cmap';
 import {
-  Cmd, Dict, EOF, isDict, isName, isRef, isStream, Name
+  Cmd, Dict, EOF, isDict, isName, isRef, isStream, Name, Ref
 } from './primitives';
 import {
   ErrorFont, Font, FontFlags, getFontType, IdentityToUnicodeMap, ToUnicodeMap
@@ -78,8 +78,24 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       if (this.builtInCMapCache.has(name)) {
         return this.builtInCMapCache.get(name);
       }
-      const data = await this.handler.sendWithPromise('FetchBuiltInCMap',
-                                                      { name, });
+      const readableStream = this.handler.sendWithStream('FetchBuiltInCMap', {
+        name,
+      });
+      const reader = readableStream.getReader();
+
+      const data = await new Promise(function(resolve, reject) {
+        function pump() {
+          reader.read().then(function({ value, done, }) {
+            if (done) {
+              return;
+            }
+            resolve(value);
+            pump();
+          }, reject);
+        }
+        pump();
+      });
+
       if (data.compressionType !== CMapCompressionType.NONE) {
         // Given the size of uncompressed CMaps, only cache compressed ones.
         this.builtInCMapCache.set(name, data);
@@ -109,8 +125,23 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
   };
 
   // Convert PDF blend mode names to HTML5 blend mode names.
-  function normalizeBlendMode(value) {
+  function normalizeBlendMode(value, parsingArray = false) {
+    if (Array.isArray(value)) {
+      // Use the first *supported* BM value in the Array (fixes issue11279.pdf).
+      for (let i = 0, ii = value.length; i < ii; i++) {
+        const maybeBM = normalizeBlendMode(value[i], /* parsingArray = */ true);
+        if (maybeBM) {
+          return maybeBM;
+        }
+      }
+      warn(`Unsupported blend mode Array: ${value}`);
+      return 'source-over';
+    }
+
     if (!isName(value)) {
+      if (parsingArray) {
+        return null;
+      }
       return 'source-over';
     }
     switch (value.name) {
@@ -148,7 +179,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       case 'Luminosity':
         return 'luminosity';
     }
-    warn('Unsupported blend mode: ' + value.name);
+    if (parsingArray) {
+      return null;
+    }
+    warn(`Unsupported blend mode: ${value.name}`);
     return 'source-over';
   }
 
@@ -164,7 +198,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     },
 
     hasBlendModes: function PartialEvaluator_hasBlendModes(resources) {
-      if (!isDict(resources)) {
+      if (!(resources instanceof Dict)) {
         return false;
       }
 
@@ -175,33 +209,55 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
 
       var nodes = [resources], xref = this.xref;
       while (nodes.length) {
-        var key, i, ii;
         var node = nodes.shift();
         // First check the current resources for blend modes.
         var graphicStates = node.get('ExtGState');
-        if (isDict(graphicStates)) {
+        if (graphicStates instanceof Dict) {
           var graphicStatesKeys = graphicStates.getKeys();
-          for (i = 0, ii = graphicStatesKeys.length; i < ii; i++) {
-            key = graphicStatesKeys[i];
+          for (let i = 0, ii = graphicStatesKeys.length; i < ii; i++) {
+            const key = graphicStatesKeys[i];
 
-            var graphicState = graphicStates.get(key);
-            var bm = graphicState.get('BM');
-            if (isName(bm) && bm.name !== 'Normal') {
-              return true;
+            let graphicState = graphicStates.getRaw(key);
+            if (graphicState instanceof Ref) {
+              if (processed[graphicState.toString()]) {
+                continue; // The ExtGState has already been processed.
+              }
+              graphicState = xref.fetch(graphicState);
+            }
+            if (!(graphicState instanceof Dict)) {
+              continue;
+            }
+            if (graphicState.objId) {
+              processed[graphicState.objId] = true;
+            }
+
+            const bm = graphicState.get('BM');
+            if (bm instanceof Name) {
+              if (bm.name !== 'Normal') {
+                return true;
+              }
+              continue;
+            }
+            if (bm !== undefined && Array.isArray(bm)) {
+              for (let j = 0, jj = bm.length; j < jj; j++) {
+                if ((bm[j] instanceof Name) && bm[j].name !== 'Normal') {
+                  return true;
+                }
+              }
             }
           }
         }
         // Descend into the XObjects to look for more resources and blend modes.
         var xObjects = node.get('XObject');
-        if (!isDict(xObjects)) {
+        if (!(xObjects instanceof Dict)) {
           continue;
         }
         var xObjectsKeys = xObjects.getKeys();
-        for (i = 0, ii = xObjectsKeys.length; i < ii; i++) {
-          key = xObjectsKeys[i];
+        for (let i = 0, ii = xObjectsKeys.length; i < ii; i++) {
+          const key = xObjectsKeys[i];
 
           var xObject = xObjects.getRaw(key);
-          if (isRef(xObject)) {
+          if (xObject instanceof Ref) {
             if (processed[xObject.toString()]) {
               // The XObject has already been processed, and by avoiding a
               // redundant `xref.fetch` we can *significantly* reduce the load
@@ -215,14 +271,13 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           }
           if (xObject.dict.objId) {
             if (processed[xObject.dict.objId]) {
-              // stream has objId and is processed already
-              continue;
+              continue; // Stream has objId and was processed already.
             }
             processed[xObject.dict.objId] = true;
           }
           var xResources = xObject.dict.get('Resources');
           // Checking objId to detect an infinite loop.
-          if (isDict(xResources) &&
+          if ((xResources instanceof Dict) &&
               (!xResources.objId || !processed[xResources.objId])) {
             nodes.push(xResources);
             if (xResources.objId) {
@@ -234,11 +289,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       return false;
     },
 
-    buildFormXObject: function PartialEvaluator_buildFormXObject(resources,
-                                                                 xobj, smask,
-                                                                 operatorList,
-                                                                 task,
-                                                                 initialState) {
+    async buildFormXObject(resources, xobj, smask, operatorList, task,
+                           initialState) {
       var dict = xobj.dict;
       var matrix = dict.getArray('Matrix');
       var bbox = dict.getArray('BBox');
@@ -263,14 +315,10 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
           groupOptions.isolated = (group.get('I') || false);
           groupOptions.knockout = (group.get('K') || false);
           if (group.has('CS')) {
-            colorSpace = group.get('CS');
-            if (colorSpace) {
-              colorSpace = ColorSpace.parse(colorSpace, this.xref, resources,
-                                            this.pdfFunctionFactory);
-            } else {
-              warn('buildFormXObject - invalid/non-existent Group /CS entry: ' +
-                   group.getRaw('CS'));
-            }
+            colorSpace = await this.parseColorSpace({
+              cs: group.get('CS'),
+              resources,
+            });
           }
         }
 
@@ -541,6 +589,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         operatorList.addDependencies(tilingOpList.dependencies);
         operatorList.addOp(fn, tilingPatternIR);
       }, (reason) => {
+        if (reason instanceof AbortException) {
+          return;
+        }
         if (this.options.ignoreErrors) {
           // Error(s) in the TilingPattern -- sending unsupported feature
           // notification and allow rendering to continue.
@@ -692,21 +743,35 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       var fontRef, xref = this.xref;
       if (font) { // Loading by ref.
         if (!isRef(font)) {
-          throw new Error('The "font" object should be a reference.');
+          throw new FormatError('The "font" object should be a reference.');
         }
         fontRef = font;
       } else { // Loading by name.
         var fontRes = resources.get('Font');
         if (fontRes) {
           fontRef = fontRes.getRaw(fontName);
-        } else {
-          warn('fontRes not available');
-          return errorFont();
         }
       }
       if (!fontRef) {
-        warn('fontRef not available');
-        return errorFont();
+        const partialMsg =
+          `Font "${fontName || (font && font.toString())}" is not available`;
+
+        if (!this.options.ignoreErrors && !this.parsingType3Font) {
+          warn(`${partialMsg}.`);
+          return errorFont();
+        }
+        // Font not found -- sending unsupported feature notification.
+        this.handler.send('UnsupportedFeature',
+                          { featureId: UNSUPPORTED_FEATURES.font, });
+        warn(`${partialMsg} -- attempting to fallback to a default font.`);
+
+        // Falling back to a default font to avoid completely broken rendering,
+        // but note that there're no guarantees that things will look "correct".
+        fontRef = new Dict();
+        fontRef.set('BaseFont', Name.get('PDFJS-FallbackFont'));
+        fontRef.set('Type', Name.get('FallbackType'));
+        fontRef.set('Subtype', Name.get('FallbackType'));
+        fontRef.set('Encoding', Name.get('WinAnsiEncoding'));
       }
 
       if (this.fontCache.has(fontRef)) {
@@ -862,6 +927,26 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       }
     },
 
+    parseColorSpace({ cs, resources, }) {
+      return new Promise((resolve) => {
+        resolve(ColorSpace.parse(cs, this.xref, resources,
+                                 this.pdfFunctionFactory));
+      }).catch((reason) => {
+        if (reason instanceof AbortException) {
+          return null;
+        }
+        if (this.options.ignoreErrors) {
+          // Error(s) in the ColorSpace -- sending unsupported feature
+          // notification and allow rendering to continue.
+          this.handler.send('UnsupportedFeature',
+                            { featureId: UNSUPPORTED_FEATURES.unknown, });
+          warn(`parseColorSpace - ignoring ColorSpace: "${reason}".`);
+          return null;
+        }
+        throw reason;
+      });
+    },
+
     async handleColorN(operatorList, fn, args, cs, patterns, resources, task) {
       // compile tiling patterns
       var patternName = args[args.length - 1];
@@ -918,8 +1003,8 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
       }
 
       return new Promise(function promiseBody(resolve, reject) {
-        var next = function (promise) {
-          promise.then(function () {
+        let next = function(promise) {
+          Promise.all([promise, operatorList.ready]).then(function () {
             try {
               promiseBody(resolve, reject);
             } catch (ex) {
@@ -1000,6 +1085,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                 }
                 resolveXObject();
               }).catch(function(reason) {
+                if (reason instanceof AbortException) {
+                  return;
+                }
                 if (self.options.ignoreErrors) {
                   // Error(s) in the XObject -- sending unsupported feature
                   // notification and allow rendering to continue.
@@ -1083,15 +1171,25 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
               break;
 
             case OPS.setFillColorSpace:
-              stateManager.state.fillColorSpace =
-                ColorSpace.parse(args[0], xref, resources,
-                                 self.pdfFunctionFactory);
-              continue;
+              next(self.parseColorSpace({
+                cs: args[0],
+                resources,
+              }).then(function(colorSpace) {
+                if (colorSpace) {
+                  stateManager.state.fillColorSpace = colorSpace;
+                }
+              }));
+              return;
             case OPS.setStrokeColorSpace:
-              stateManager.state.strokeColorSpace =
-                ColorSpace.parse(args[0], xref, resources,
-                                 self.pdfFunctionFactory);
-              continue;
+              next(self.parseColorSpace({
+                cs: args[0],
+                resources,
+              }).then(function(colorSpace) {
+                if (colorSpace) {
+                  stateManager.state.strokeColorSpace = colorSpace;
+                }
+              }));
+              return;
             case OPS.setFillColor:
               cs = stateManager.state.fillColorSpace;
               args = cs.getRgb(args, 0);
@@ -1230,6 +1328,9 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         closePendingRestoreOPS();
         resolve();
       }).catch((reason) => {
+        if (reason instanceof AbortException) {
+          return;
+        }
         if (this.options.ignoreErrors) {
           // Error(s) in the OperatorList -- sending unsupported feature
           // notification and allow rendering to continue.
@@ -1952,7 +2053,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
      * @returns {ToUnicodeMap}
      * @private
      */
-    _buildSimpleFontToUnicode(properties) {
+    _buildSimpleFontToUnicode(properties, forceGlyphs = false) {
       assert(!properties.composite, 'Must be a simple font.');
 
       let toUnicode = [], charcode, glyphName;
@@ -1992,14 +2093,31 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
                 code = parseInt(glyphName.substring(1), 16);
               }
               break;
-            case 'C': // Cddd glyph
-            case 'c': // cddd glyph
-              if (glyphName.length >= 3) {
-                code = +glyphName.substring(1);
+            case 'C': // Cdd{d} glyph
+            case 'c': // cdd{d} glyph
+              if (glyphName.length >= 3 && glyphName.length <= 4) {
+                const codeStr = glyphName.substring(1);
+
+                if (forceGlyphs) {
+                  code = parseInt(codeStr, 16);
+                  break;
+                }
+                // Normally the Cdd{d}/cdd{d} glyphName format will contain
+                // regular, i.e. base 10, charCodes (see issue4550.pdf)...
+                code = +codeStr;
+
+                // ... however some PDF generators violate that assumption by
+                // containing glyph, i.e. base 16, codes instead.
+                // In that case we need to re-parse the *entire* encoding to
+                // prevent broken text-selection (fixes issue9655_reduced.pdf).
+                if (Number.isNaN(code) &&
+                    Number.isInteger(parseInt(codeStr, 16))) {
+                  return this._buildSimpleFontToUnicode(properties,
+                                                        /* forceGlyphs */ true);
+                }
               }
               break;
-            default:
-              // 'uniXXXX'/'uXXXX{XX}' glyphs
+            default: // 'uniXXXX'/'uXXXX{XX}' glyphs
               let unicode = getUnicodeForGlyph(glyphName, glyphsUnicodeMap);
               if (unicode !== -1) {
                 code = unicode;
@@ -2029,7 +2147,7 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
     /**
      * Builds a char code to unicode map based on section 9.10 of the spec.
      * @param {Object} properties Font properties object.
-     * @return {Promise} A Promise that is resolved with a
+     * @returns {Promise} A Promise that is resolved with a
      *   {ToUnicodeMap|IdentityToUnicodeMap} object.
      */
     buildToUnicode(properties) {
